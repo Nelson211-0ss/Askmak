@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AskMak Admin</title>
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <script src="/js/tailwind-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="font-sans bg-gray-100 dark:bg-gray-950 text-gray-900 dark:text-gray-100 min-h-screen">
+
+<div id="admin-root" class="flex h-screen overflow-hidden">
+  <aside id="admin-sidebar" class="w-[260px] bg-mak-dark text-white flex flex-col shrink-0 z-40 fixed lg:static inset-y-0 left-0 -translate-x-full lg:translate-x-0 transition-transform duration-300">
+    <div class="h-14 px-4 flex items-center justify-between border-b border-white/10 shrink-0">
+      <span class="font-bold text-lg tracking-tight">AskMak <span class="text-mak-green">Admin</span></span>
+      <button type="button" id="sidebar-close" class="lg:hidden text-white/70 hover:text-white border-none bg-transparent cursor-pointer p-1">&times;</button>
+    </div>
+    <nav class="flex-1 overflow-y-auto sidebar-scroll py-3 text-sm">
+      <button type="button" data-section="overview" class="admin-nav w-full text-left px-4 py-2.5 hover:bg-white/10 border-l-4 border-transparent data-[active]:border-mak-red data-[active]:bg-white/10">Overview</button>
+      <button type="button" data-section="escalations" class="admin-nav w-full text-left px-4 py-2.5 hover:bg-white/10 border-l-4 border-transparent data-[active]:border-mak-red data-[active]:bg-white/10 flex justify-between items-center">
+        Escalations <span id="nav-esc-count" class="text-xs bg-mak-red px-1.5 py-0.5 rounded hidden">0</span>
+      </button>
+      <button type="button" data-section="unresolved" class="admin-nav w-full text-left px-4 py-2.5 hover:bg-white/10 border-l-4 border-transparent data-[active]:border-mak-red data-[active]:bg-white/10">Unresolved</button>
+      <button type="button" data-section="users" class="admin-nav w-full text-left px-4 py-2.5 hover:bg-white/10 border-l-4 border-transparent data-[active]:border-mak-red data-[active]:bg-white/10">Users</button>
+      <button type="button" data-section="conversations" class="admin-nav w-full text-left px-4 py-2.5 hover:bg-white/10 border-l-4 border-transparent data-[active]:border-mak-red data-[active]:bg-white/10">Conversations</button>
+      <button type="button" data-section="feedback" class="admin-nav w-full text-left px-4 py-2.5 hover:bg-white/10 border-l-4 border-transparent data-[active]:border-mak-red data-[active]:bg-white/10">Feedback</button>
+      <button type="button" data-section="documents" class="admin-nav w-full text-left px-4 py-2.5 hover:bg-white/10 border-l-4 border-transparent data-[active]:border-mak-red data-[active]:bg-white/10">Knowledge base</button>
+      <button type="button" data-section="reference" class="admin-nav w-full text-left px-4 py-2.5 hover:bg-white/10 border-l-4 border-transparent data-[active]:border-mak-red data-[active]:bg-white/10">Reference images</button>
+      <button type="button" data-section="ingest" class="admin-nav w-full text-left px-4 py-2.5 hover:bg-white/10 border-l-4 border-transparent data-[active]:border-mak-red data-[active]:bg-white/10">Ingestion</button>
+      <button type="button" data-section="settings" class="admin-nav w-full text-left px-4 py-2.5 hover:bg-white/10 border-l-4 border-transparent data-[active]:border-mak-red data-[active]:bg-white/10">Settings</button>
+    </nav>
+    <div class="p-3 border-t border-white/10 text-xs text-white/60 shrink-0">
+      <div id="admin-user-label" class="truncate mb-2"></div>
+      <a href="/chat.html" class="text-mak-green hover:underline">Open chat</a>
+      <button type="button" id="admin-logout" class="block mt-2 text-white/80 hover:text-white bg-transparent border-none cursor-pointer p-0">Log out</button>
+    </div>
+  </aside>
+
+  <div id="sidebar-overlay" class="hidden fixed inset-0 bg-black/50 z-30 lg:hidden"></div>
+
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="h-14 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between px-4 shrink-0">
+      <div class="flex items-center gap-3">
+        <button type="button" id="sidebar-open" class="lg:hidden p-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 cursor-pointer">
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg>
+        </button>
+        <h1 id="section-title" class="text-lg font-semibold text-mak-dark dark:text-white">Overview</h1>
+      </div>
+      <button type="button" id="theme-toggle-admin" class="text-sm text-gray-500 hover:text-mak-green border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-800 cursor-pointer">Theme</button>
+    </header>
+
+    <main id="admin-main" class="flex-1 overflow-y-auto thin-scroll p-4 md:p-6"></main>
+  </div>
+</div>
+
+<div id="admin-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+  <div class="bg-white dark:bg-gray-900 rounded-xl max-w-3xl w-full max-h-[85vh] overflow-hidden shadow-xl flex flex-col">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0">
+      <h3 id="modal-title" class="font-semibold"></h3>
+      <button type="button" id="modal-close" class="text-2xl leading-none text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 border-none bg-transparent cursor-pointer">&times;</button>
+    </div>
+    <div id="modal-body" class="p-4 overflow-y-auto thin-scroll flex-1 text-sm"></div>
+  </div>
+</div>
+
+<script src="/js/theme.js"></script>
+<script src="/js/utils.js"></script>
+<script src="/js/admin.js"></script>
+</body>
+</html>
