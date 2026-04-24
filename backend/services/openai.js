@@ -1,8 +1,10 @@
 const OpenAI = require('openai');
 const db = require('../config/db');
 const storage = require('./storage');
-const { hybridSearch, expandAbbreviations, formatContextForLLM } = require('./embedding');
+const { hybridSearch, formatContextForLLM } = require('./embedding');
 const { getToolSchemas, executeToolCall } = require('./mcp/registry');
+const { stripLatestUserTurn, buildStandaloneSearchQuery } = require('./searchQuery');
+const { logRetrieval } = require('./ragLog');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -12,7 +14,8 @@ function buildSystemPrompt(memories = []) {
 Guidelines:
 - Be friendly, professional, and helpful
 - Only answer questions related to Makerere University and higher education in Uganda
-- Always cite your sources when you use information from the knowledge base
+- Grounding: Treat facts about fees, dates, entry requirements, program names, and policies as UNKNOWN unless they appear in the knowledge base context below, in tool results, or on a page you retrieved via tools. If retrieval is weak or empty, state that clearly and point to official sites or offices
+- Cite sources: When you use knowledge base or tool text, name the source (e.g. the article title or page) in the answer. If you have no citable support, do not present specifics as certain
 - If you're unsure, say so honestly and suggest where the user can find accurate information
 - When appropriate, use the provided tools to look up real-time information
 - If a reference image would help (campus map, building location), use the file tools to include it
@@ -56,15 +59,20 @@ async function getChatHistory(chatId, limit = 8) {
 
 async function buildMessages(chatId, userContent, userId, imageKey) {
     const memories = await getUserMemories(userId);
-    const history = await getChatHistory(chatId);
-    const expandedQuery = expandAbbreviations(userContent);
+    const history = await getChatHistory(chatId, 12);
+    const priorForPrompt = stripLatestUserTurn(history, userContent, imageKey);
+    const searchQuery = buildStandaloneSearchQuery(priorForPrompt, userContent);
 
-    const isSimple = /^(hi|hello|hey|thanks|thank you|bye|ok|okay)$/i.test(userContent.trim());
+    const isSimple = /^(hi|hello|hey|thanks|thank you|bye|ok|okay)$/i.test((userContent || '').trim());
     let ragContext = '';
+    let retrieval = null;
+    let documents = [];
 
     if (!isSimple) {
-        const docs = await hybridSearch(expandedQuery, { limit: 5 });
-        ragContext = formatContextForLLM(docs);
+        const searchResult = await hybridSearch(searchQuery, { limit: 5 });
+        documents = searchResult.documents;
+        retrieval = searchResult.retrieval;
+        ragContext = formatContextForLLM(documents, retrieval);
     }
 
     const messages = [];
@@ -75,7 +83,7 @@ async function buildMessages(chatId, userContent, userId, imageKey) {
 
     messages.push({ role: 'system', content: systemContent });
 
-    for (const msg of history) {
+    for (const msg of priorForPrompt) {
         if (msg.role === 'user' && msg.image_key) {
             const url = await storage.getPresignedUrl(process.env.MINIO_BUCKET_UPLOADS, msg.image_key);
             messages.push({
@@ -103,11 +111,32 @@ async function buildMessages(chatId, userContent, userId, imageKey) {
         messages.push({ role: 'user', content: userContent });
     }
 
-    return messages;
+    return {
+        messages,
+        searchQuery: isSimple ? null : searchQuery,
+        retrieval: isSimple
+            ? null
+            : retrieval,
+        documentCount: documents.length,
+        ragSkipped: isSimple
+    };
 }
 
 async function streamResponse(chatId, userContent, userId, imageKey, onData) {
-    const messages = await buildMessages(chatId, userContent, userId, imageKey);
+    const built = await buildMessages(chatId, userContent, userId, imageKey);
+    const { messages, searchQuery, retrieval, ragSkipped, documentCount } = built;
+
+    logRetrieval({
+        chat_id: chatId,
+        user_message: (userContent || '').substring(0, 500),
+        search_query: searchQuery,
+        best_strength: retrieval?.bestStrength,
+        passed_threshold: retrieval?.passedThreshold,
+        threshold: retrieval?.threshold,
+        document_count: documentCount,
+        rag_skipped: ragSkipped
+    });
+
     const tools = getToolSchemas();
 
     let fullContent = '';
@@ -203,7 +232,12 @@ async function streamResponse(chatId, userContent, userId, imageKey, onData) {
 
     await callOpenAI(messages);
 
-    return { content: fullContent, tokensUsed, sources };
+    const confidenceScore =
+        ragSkipped || !retrieval
+            ? null
+            : Math.round((retrieval.bestStrength + Number.EPSILON) * 1000) / 1000;
+
+    return { content: fullContent, tokensUsed, sources, confidenceScore };
 }
 
 async function generateTitle(content) {

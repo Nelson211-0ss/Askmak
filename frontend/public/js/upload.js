@@ -22,15 +22,15 @@ var Upload = {
         e.preventDefault();
         e.stopPropagation();
         var dark = document.documentElement.classList.contains('dark');
-        chatArea.classList.add('ring-2', dark ? 'ring-gray-500/45' : 'ring-mak-green/30');
+        chatArea.classList.add('ring-2', dark ? 'ring-mak-green/35' : 'ring-mak-green/30');
       });
       chatArea.addEventListener('dragleave', function(e) {
         e.preventDefault();
-        chatArea.classList.remove('ring-2', 'ring-mak-green/30', 'ring-gray-500/45');
+        chatArea.classList.remove('ring-2', 'ring-mak-green/30', 'ring-mak-green/35');
       });
       chatArea.addEventListener('drop', function(e) {
         e.preventDefault();
-        chatArea.classList.remove('ring-2', 'ring-mak-green/30', 'ring-gray-500/45');
+        chatArea.classList.remove('ring-2', 'ring-mak-green/30', 'ring-mak-green/35');
         var file = e.dataTransfer.files[0];
         if (file && file.type.startsWith('image/')) self.handleFile(file);
       });

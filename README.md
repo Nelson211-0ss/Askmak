@@ -90,6 +90,7 @@ npm run ingest
 | `setup` | `docker compose up -d && node backend/scripts/setup-minio.js` | Infra + MinIO buckets |
 | `setup-minio` | `node backend/scripts/setup-minio.js` | Create MinIO buckets only |
 | `ingest` | `node backend/scripts/ingest.js` | Run ingestion |
+| `eval` | `node backend/scripts/eval.js` | Check retrieval against `backend/eval/golden-questions.json` (run after `ingest`) |
 
 ## Troubleshooting
 

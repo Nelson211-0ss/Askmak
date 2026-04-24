@@ -5,17 +5,54 @@ const db = require('../config/db');
 const { generateEmbeddings } = require('../services/embedding');
 const { scrapeAnswersMak, scrapeMakMainSite, chunkText, categorize } = require('../services/scraper');
 
+const MIN_WORDS = Math.max(4, parseInt(process.env.INGEST_MIN_CHUNK_WORDS || '10', 10));
+const INGEST_VERSION = 1;
+
+function wordCount(s) {
+    return (s || '').split(/\s+/).filter(Boolean).length;
+}
+
+async function recordIngestionRun(stats) {
+    try {
+        await db.query(
+            `INSERT INTO ingestion_runs (source, status, stats, finished_at)
+             VALUES ($1, 'completed', $2::jsonb, NOW())`,
+            ['ingest.js', JSON.stringify({ ...stats, version: INGEST_VERSION })]
+        );
+    } catch (err) {
+        if (process.env.DEBUG) console.warn('ingestion_runs not recorded:', err.message);
+    }
+}
+
 async function ingestArticles(articles) {
     let chunksCreated = 0;
     let errors = 0;
+    let chunksSkipped = 0;
 
     for (const article of articles) {
         try {
-            const chunks = chunkText(article.content);
+            const rawChunks = chunkText(article.content);
+            let usedFallback = false;
+            let chunks = rawChunks.filter(c => wordCount(c) >= MIN_WORDS);
+            if (!chunks.length && (article.content || '').trim().length > 20) {
+                const fallback = article.content.replace(/\s+/g, ' ').trim().substring(0, 8000);
+                if (wordCount(fallback) >= 4) {
+                    chunks = [fallback];
+                    usedFallback = true;
+                }
+            }
+            if (usedFallback) {
+                chunksSkipped += rawChunks.length;
+            } else {
+                chunksSkipped += Math.max(0, rawChunks.length - chunks.length);
+            }
 
-            const texts = chunks.map((c, i) =>
-                (article.title ? article.title + '\n\n' : '') + c
-            );
+            if (!chunks.length) {
+                console.warn(`  No ingestable chunks for: ${article.title || article.source_url}`);
+                continue;
+            }
+
+            const texts = chunks.map(c => (article.title ? article.title + '\n\n' : '') + c);
 
             let embeddings;
             try {
@@ -29,6 +66,13 @@ async function ingestArticles(articles) {
             for (let i = 0; i < chunks.length; i++) {
                 const embeddingStr = '[' + embeddings[i].join(',') + ']';
                 const imageKeys = i === 0 ? article.image_keys : null;
+                const meta = {
+                    ...((article.metadata && typeof article.metadata === 'object' && article.metadata) || {}),
+                    chunk_word_count: wordCount(chunks[i]),
+                    chunk_of: chunks.length,
+                    min_words_applied: MIN_WORDS,
+                    ingest_version: INGEST_VERSION
+                };
 
                 await db.query(
                     `INSERT INTO documents (source_url, title, content, chunk_index, embedding, category, image_keys, metadata)
@@ -44,7 +88,7 @@ async function ingestArticles(articles) {
                         embeddingStr,
                         article.category,
                         imageKeys ? JSON.stringify(imageKeys) : null,
-                        JSON.stringify(article.metadata || {})
+                        JSON.stringify(meta)
                     ]
                 );
 
@@ -56,7 +100,7 @@ async function ingestArticles(articles) {
         }
     }
 
-    return { chunksCreated, errors };
+    return { chunksCreated, errors, chunksSkipped, minChunkWords: MIN_WORDS };
 }
 
 async function ingestLocalContent() {
@@ -142,8 +186,18 @@ async function run() {
     console.log(`\n=== Ingestion Complete ===`);
     console.log(`  Articles processed: ${allArticles.length}`);
     console.log(`  Chunks created: ${stats.chunksCreated}`);
+    if (stats.chunksSkipped) console.log(`  Chunks dropped (below ${MIN_WORDS} words): ${stats.chunksSkipped}`);
     console.log(`  Errors: ${stats.errors}`);
     console.log(`  Time: ${elapsed}s`);
+
+    await recordIngestionRun({
+        articles: allArticles.length,
+        chunksCreated: stats.chunksCreated,
+        chunksSkipped: stats.chunksSkipped,
+        errors: stats.errors,
+        seconds: parseFloat(elapsed),
+        min_chunk_words: stats.minChunkWords
+    });
 
     process.exit(0);
 }

@@ -15,21 +15,28 @@ function register(reg) {
             required: ['query']
         }
     }, async (args) => {
-        const results = await hybridSearch(args.query, {
+        const { documents, retrieval } = await hybridSearch(args.query, {
             category: args.category,
             limit: args.limit || 5
         });
 
         return {
-            results: results.map(r => ({
+            results: documents.map(r => ({
                 title: r.title,
                 content: r.content,
                 source_url: r.source_url,
                 category: r.category,
                 similarity: r.score,
+                retrieval_strength: r.vectorSimilarity != null
+                    ? r.vectorSimilarity
+                    : r.ftsRank != null
+                        ? Math.min(1, r.ftsRank * 5)
+                        : r.score,
+                best_match_score: retrieval.bestStrength,
+                met_confidence_threshold: retrieval.passedThreshold,
                 images: r.image_urls || []
             })),
-            sources: results.filter(r => r.source_url).map(r => ({
+            sources: documents.filter(r => r.source_url).map(r => ({
                 title: r.title,
                 url: r.source_url
             }))

@@ -8,6 +8,7 @@
     "dev": "nodemon backend/server.js",
     "setup-minio": "node backend/scripts/setup-minio.js",
     "ingest": "node backend/scripts/ingest.js",
+    "eval": "node backend/scripts/eval.js",
     "setup": "docker compose up -d && node backend/scripts/setup-minio.js"
   },
   "keywords": [],

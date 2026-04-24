@@ -153,7 +153,7 @@
         var role = m.role;
         var bubble = role === 'user' ? 'bg-mak-green/15' : role === 'assistant' ? 'bg-gray-100 dark:bg-gray-800' : 'bg-mak-gold/10';
         html += '<div class="rounded-lg p-2 ' + bubble + '"><span class="text-xs font-semibold uppercase text-gray-500">' + role + '</span>';
-        html += '<div class="prose prose-sm dark:prose-invert max-w-none">' + (role === 'assistant' ? Utils.renderMarkdown(m.content || '') : Utils.escapeHtml(m.content || '')) + '</div>';
+        html += '<div class="prose prose-sm prose-sans dark:prose-invert max-w-none">' + (role === 'assistant' ? Utils.renderMarkdown(m.content || '') : Utils.escapeHtml(m.content || '')) + '</div>';
         if (m.image_url) html += '<img src="' + Utils.escapeHtml(m.image_url) + '" class="mt-2 max-h-40 rounded cursor-pointer" onclick="Utils.openLightbox(this.src)">';
         html += '</div>';
       });

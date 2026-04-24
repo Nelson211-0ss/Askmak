@@ -233,7 +233,7 @@ router.post('/:id/messages', messageLimiter, async (req, res, next) => {
         const msgResult = await db.query(
             `INSERT INTO messages (chat_id, role, content, tokens_used, sources, confidence_score)
              VALUES ($1, 'assistant', $2, $3, $4, $5) RETURNING id`,
-            [chatId, result.content, result.tokensUsed, JSON.stringify(result.sources), null]
+            [chatId, result.content, result.tokensUsed, JSON.stringify(result.sources), result.confidenceScore]
         );
 
         if (result.sources.length) {

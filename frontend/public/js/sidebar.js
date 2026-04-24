@@ -119,7 +119,7 @@ var Sidebar = {
       items.forEach(function(chat) {
         var isActive = chat.id === self.activeId;
         var activeClass = isActive
-          ? ' text-mak-dark dark:text-white bg-zinc-200/90 dark:bg-white/[0.06]'
+          ? ' text-mak-dark dark:text-white bg-zinc-200/90 dark:bg-mak-green/[0.14]'
           : '';
         html += '<div class="flex items-center gap-2 px-2 py-2 cursor-pointer text-[13px] text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-900 dark:text-white/65 dark:hover:bg-white/[0.04] dark:hover:text-white transition group relative' + activeClass + '" data-id="' + chat.id + '">';
         html += '<span class="shrink-0 text-zinc-400 group-hover:text-zinc-600 dark:text-white/30 dark:group-hover:text-white/45" aria-hidden="true">';
@@ -172,9 +172,9 @@ var Sidebar = {
   openMenu: function(btn, chatId) {
     this.closeMenus();
     var dropdown = document.createElement('div');
-    dropdown.className = 'chat-dropdown absolute right-0 top-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-xl z-50 min-w-[140px] p-1';
+    dropdown.className = 'chat-dropdown absolute right-0 top-full mt-1 bg-white dark:bg-chat-raised border border-gray-200 dark:border-chat-line rounded-lg shadow-xl z-50 min-w-[140px] p-1';
     dropdown.innerHTML =
-      '<button class="flex items-center gap-2 w-full px-3 py-2 bg-transparent border-none rounded text-gray-700 dark:text-gray-200 text-[13px] cursor-pointer text-left hover:bg-gray-100 dark:hover:bg-gray-800 transition" data-action="rename">' +
+      '<button class="flex items-center gap-2 w-full px-3 py-2 bg-transparent border-none rounded text-gray-700 dark:text-gray-200 text-[13px] cursor-pointer text-left hover:bg-gray-100 dark:hover:bg-mak-green/10 transition" data-action="rename">' +
         '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>' +
         'Rename</button>' +
       '<button class="flex items-center gap-2 w-full px-3 py-2 bg-transparent border-none rounded text-mak-red text-[13px] cursor-pointer text-left hover:bg-red-50 dark:hover:bg-red-950/20 transition" data-action="delete">' +

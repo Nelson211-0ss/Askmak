@@ -80,29 +80,54 @@ async function fullTextSearch(query, options = {}) {
     return result.rows;
 }
 
+function retrievalStrength(doc) {
+    if (doc.vectorSimilarity != null && doc.vectorSimilarity > 0) {
+        return doc.vectorSimilarity;
+    }
+    if (doc.ftsRank != null && doc.ftsRank > 0) {
+        return Math.min(1, doc.ftsRank * 5);
+    }
+    if (doc.score != null) {
+        return Math.min(1, Math.max(0, doc.score));
+    }
+    return 0;
+}
+
 async function hybridSearch(query, options = {}) {
+    const threshold = options.minScore != null
+        ? options.minScore
+        : parseFloat(process.env.RAG_MIN_RETRIEVAL_SCORE || '0.22');
+
     const [vectorResults, textResults] = await Promise.all([
         vectorSearch(query, options),
         fullTextSearch(query, options).catch(() => [])
     ]);
 
     const seen = new Map();
+    const vlen = Math.max(vectorResults.length, 1);
 
     vectorResults.forEach((doc, idx) => {
+        const rankBoost = 1 - idx / vlen;
         seen.set(doc.id, {
             ...doc,
-            score: (doc.similarity || 0) * 0.7 + (1 - idx / vectorResults.length) * 0.3
+            vectorSimilarity: doc.similarity,
+            ftsRank: null,
+            score: (doc.similarity || 0) * 0.7 + rankBoost * 0.3
         });
     });
 
     textResults.forEach((doc, idx) => {
+        const rnk = doc.rank || 0;
         if (seen.has(doc.id)) {
             const existing = seen.get(doc.id);
-            existing.score += (doc.rank || 0) * 0.3;
+            existing.ftsRank = rnk;
+            existing.score += rnk * 0.3;
         } else {
             seen.set(doc.id, {
                 ...doc,
-                score: (doc.rank || 0) * 0.5
+                vectorSimilarity: null,
+                ftsRank: rnk,
+                score: rnk * 0.5
             });
         }
     });
@@ -110,6 +135,14 @@ async function hybridSearch(query, options = {}) {
     const results = Array.from(seen.values())
         .sort((a, b) => b.score - a.score)
         .slice(0, options.limit || 5);
+
+    let bestStrength = 0;
+    for (const doc of results) {
+        const s = retrievalStrength(doc);
+        if (s > bestStrength) bestStrength = s;
+    }
+
+    const passedThreshold = results.length > 0 && bestStrength >= threshold;
 
     for (const doc of results) {
         if (doc.image_keys && doc.image_keys.length) {
@@ -121,7 +154,15 @@ async function hybridSearch(query, options = {}) {
         }
     }
 
-    return results;
+    return {
+        documents: results,
+        retrieval: {
+            bestStrength,
+            passedThreshold,
+            threshold,
+            query
+        }
+    };
 }
 
 function expandAbbreviations(query) {
@@ -150,17 +191,32 @@ function expandAbbreviations(query) {
     return expanded;
 }
 
-function formatContextForLLM(docs) {
-    if (!docs.length) return 'No relevant documents found in the knowledge base.';
+function formatContextForLLM(docs, retrieval = {}) {
+    const { passedThreshold = true, bestStrength = 0, threshold = 0 } = retrieval;
+    const lowConfidence = !docs.length || !passedThreshold;
+    const strengthNote = `best match strength ${(bestStrength || 0).toFixed(2)} (threshold ${(threshold || 0).toFixed(2)})`;
 
-    return docs.map((doc, i) => {
+    let preamble = '';
+    if (lowConfidence) {
+        preamble =
+            `IMPORTANT — Retrieval ${docs.length ? 'is weak' : 'returned no chunks'} (${strengthNote}). ` +
+            'Do not invent fees, dates, or policies. If you lack solid KB support, say so and point users to official Makerere pages or offices.\n\n';
+    }
+
+    if (!docs.length) {
+        return preamble + 'No relevant documents were retrieved from the knowledge base for this query.';
+    }
+
+    const body = docs.map((doc, i) => {
         let block = `[Source ${i + 1}: ${doc.title || 'Untitled'}]\n${doc.content}`;
         if (doc.source_url) block += `\nURL: ${doc.source_url}`;
         return block;
     }).join('\n\n---\n\n');
+
+    return preamble + body;
 }
 
 module.exports = {
     generateEmbedding, generateEmbeddings, vectorSearch, fullTextSearch,
-    hybridSearch, expandAbbreviations, formatContextForLLM
+    hybridSearch, expandAbbreviations, formatContextForLLM, retrievalStrength
 };
