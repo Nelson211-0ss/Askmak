@@ -7,7 +7,10 @@ const dotenv = require('dotenv');
 
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
-function resolveCookieSecret() {
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET?.trim()) {
+    console.error('FATAL: JWT_SECRET must be set in production');
+    process.exit(1);
+}
     const raw = process.env.COOKIE_SECRET;
     if (typeof raw === 'string' && raw.trim()) {
         return raw.trim();

@@ -1,4 +1,5 @@
 const router = require('express').Router();
+const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const Joi = require('joi');
@@ -43,14 +44,37 @@ const signupSchema = Joi.object({
     password: Joi.string().min(8).max(128).required()
 });
 
+const resetPasswordSchema = Joi.object({
+    token: Joi.string().length(64).pattern(/^[a-f0-9]+$/).required(),
+    password: Joi.string().min(8).max(128).required()
+});
+
+function sendPasswordResetEmail() {
+    return process.env.VERIFICATION_EMAIL === 'true' || process.env.PASSWORD_RESET_EMAIL === 'true';
+}
+
+function appBaseUrl(req) {
+    const fromEnv = process.env.APP_BASE_URL;
+    if (fromEnv && String(fromEnv).trim()) {
+        return String(fromEnv).trim().replace(/\/$/, '');
+    }
+    return `${req.protocol}://${req.get('host')}`;
+}
+
 function generateCode() {
     return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 function signToken(user) {
+    const secret = process.env.JWT_SECRET;
+    if (!secret || !String(secret).trim()) {
+        const err = new Error('Server is misconfigured (JWT_SECRET)');
+        err.statusCode = 503;
+        throw err;
+    }
     return jwt.sign(
         { id: user.id, email: user.email, role: user.role, full_name: user.full_name },
-        process.env.JWT_SECRET,
+        secret,
         { expiresIn: '7d' }
     );
 }
@@ -207,6 +231,88 @@ router.post('/login', authLimiter, async (req, res, next) => {
 router.post('/logout', (req, res) => {
     res.clearCookie('token');
     res.json({ message: 'Logged out' });
+});
+
+router.post('/forgot-password', authLimiter, async (req, res, next) => {
+    try {
+        const { error, value: email } = Joi.string().email().required().validate(req.body.email, {
+            abortEarly: true
+        });
+        if (error) return res.status(400).json({ error: 'Valid email is required' });
+
+        const generic = {
+            message: 'If that email is registered, you will receive password reset instructions.'
+        };
+
+        const result = await db.query(
+            'SELECT id, full_name, email FROM users WHERE email = $1',
+            [email]
+        );
+
+        if (!result.rows.length) {
+            return res.json(generic);
+        }
+
+        const user = result.rows[0];
+        const token = crypto.randomBytes(32).toString('hex');
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+        await db.query(
+            `UPDATE users SET password_reset_token = $1, password_reset_expires_at = $2 WHERE id = $3`,
+            [token, expiresAt, user.id]
+        );
+
+        const link = `${appBaseUrl(req)}/reset-password.html?token=${encodeURIComponent(token)}`;
+        const html = `<p>Hi ${user.full_name},</p>`
+            + `<p>Reset your AskMak password using this link (valid for one hour):</p>`
+            + `<p><a href="${link}">${link}</a></p>`
+            + `<p>If you did not request this, you can ignore this message.</p>`;
+
+        let sent = false;
+        if (sendPasswordResetEmail()) {
+            sent = await sendVerificationMail(user.email, 'Reset your AskMak password', html);
+        }
+        if (!sent) {
+            console.log(`[AskMak] Password reset link for ${user.email}: ${link}`);
+        }
+
+        res.json(generic);
+    } catch (err) {
+        next(err);
+    }
+});
+
+router.post('/reset-password', authLimiter, async (req, res, next) => {
+    try {
+        const { error, value } = resetPasswordSchema.validate(req.body);
+        if (error) return res.status(400).json({ error: error.details[0].message });
+
+        const result = await db.query(
+            `SELECT id FROM users
+             WHERE password_reset_token = $1 AND password_reset_expires_at > NOW()`,
+            [value.token]
+        );
+
+        if (!result.rows.length) {
+            return res.status(400).json({
+                error: 'Invalid or expired reset link. Please request a new password reset.'
+            });
+        }
+
+        const passwordHash = await bcrypt.hash(value.password, 12);
+        await db.query(
+            `UPDATE users SET
+                password_hash = $1,
+                password_reset_token = NULL,
+                password_reset_expires_at = NULL
+             WHERE id = $2`,
+            [passwordHash, result.rows[0].id]
+        );
+
+        res.json({ message: 'Password updated. You can sign in with your new password.' });
+    } catch (err) {
+        next(err);
+    }
 });
 
 router.get('/me', requireAuth, async (req, res, next) => {

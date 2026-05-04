@@ -62,6 +62,22 @@ var Auth = {
       });
     }
 
+    var forgotForm = document.getElementById('forgot-form');
+    if (forgotForm) {
+      forgotForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        self.handleForgotPassword(forgotForm);
+      });
+    }
+
+    var resetForm = document.getElementById('reset-form');
+    if (resetForm) {
+      resetForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        self.handleResetPassword(resetForm);
+      });
+    }
+
     document.querySelectorAll('.toggle-password').forEach(function(btn) {
       btn.addEventListener('click', function() {
         var input = btn.closest('.relative').querySelector('input');
@@ -207,6 +223,61 @@ var Auth = {
       window.location.href = '/chat.html';
     } catch (e) {
       this.showAlert(e.message || 'Invalid verification code', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  },
+
+  handleForgotPassword: async function(form) {
+    var btn = form.querySelector('button[type="submit"]');
+    var originalText = btn.textContent;
+    try {
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      var res = await API.post('/auth/forgot-password', {
+        email: form.querySelector('[name="email"]').value
+      });
+      this.showAlert(res.message || 'Check your email for next steps.', 'success');
+    } catch (e) {
+      this.showAlert(e.message || 'Something went wrong', 'error');
+    } finally {
+      btn.disabled = false;
+      btn.textContent = originalText;
+    }
+  },
+
+  handleResetPassword: async function(form) {
+    var token = (form.querySelector('[name="token"]') || {}).value;
+    var password = form.querySelector('[name="password"]').value;
+    var confirm = form.querySelector('[name="confirm_password"]').value;
+    if (!token || token.length !== 64) {
+      this.showAlert('Invalid or missing reset link.', 'error');
+      return;
+    }
+    if (password.length < 8) {
+      this.showAlert('Password must be at least 8 characters', 'error');
+      return;
+    }
+    if (password !== confirm) {
+      this.showAlert('Passwords do not match', 'error');
+      return;
+    }
+    var btn = form.querySelector('button[type="submit"]');
+    var originalText = btn.textContent;
+    try {
+      btn.disabled = true;
+      btn.textContent = 'Saving...';
+      var res = await API.post('/auth/reset-password', {
+        token: token,
+        password: password
+      });
+      this.showAlert(res.message || 'Password updated.', 'success');
+      setTimeout(function() {
+        window.location.href = '/login.html';
+      }, 1500);
+    } catch (e) {
+      this.showAlert(e.message || 'Could not reset password', 'error');
     } finally {
       btn.disabled = false;
       btn.textContent = originalText;
