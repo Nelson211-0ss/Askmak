@@ -11,6 +11,8 @@ if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET?.trim()) {
     console.error('FATAL: JWT_SECRET must be set in production');
     process.exit(1);
 }
+
+function resolveCookieSecret() {
     const raw = process.env.COOKIE_SECRET;
     if (typeof raw === 'string' && raw.trim()) {
         return raw.trim();
